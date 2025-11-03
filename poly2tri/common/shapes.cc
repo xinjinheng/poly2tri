@@ -35,12 +35,12 @@
 
 namespace p2t {
 
-Point::Point(double x, double y) : x(x), y(y)
+Point::Point(double x, double y, double z) : x(x), y(y), z(z)
 {
 }
 
 std::ostream& operator<<(std::ostream& out, const Point& point) {
-  return out << point.x << "," << point.y;
+  return out << point.x << "," << point.y << "," << point.z;
 }
 
 Triangle::Triangle(Point& a, Point& b, Point& c)
@@ -48,6 +48,7 @@ Triangle::Triangle(Point& a, Point& b, Point& c)
   points_[0] = &a; points_[1] = &b; points_[2] = &c;
   neighbors_[0] = nullptr; neighbors_[1] = nullptr; neighbors_[2] = nullptr;
   constrained_edge[0] = constrained_edge[1] = constrained_edge[2] = false;
+  edge_weight[0] = edge_weight[1] = edge_weight[2] = 0.0;
   delaunay_edge[0] = delaunay_edge[1] = delaunay_edge[2] = false;
   interior_ = false;
 }
@@ -195,25 +196,35 @@ int Triangle::EdgeIndex(const Point* p1, const Point* p2)
   return -1;
 }
 
-void Triangle::MarkConstrainedEdge(int index)
+void Triangle::MarkConstrainedEdge(int index, double weight)
 {
   constrained_edge[index] = true;
+  edge_weight[index] = weight;
 }
 
 void Triangle::MarkConstrainedEdge(Edge& edge)
 {
-  MarkConstrainedEdge(edge.p, edge.q);
+  MarkConstrainedEdge(edge.p, edge.q, edge.weight);
 }
 
 // Mark edge as constrained
 void Triangle::MarkConstrainedEdge(Point* p, Point* q)
 {
+  MarkConstrainedEdge(p, q, 1.0);
+}
+
+// Mark edge as constrained with weight
+void Triangle::MarkConstrainedEdge(Point* p, Point* q, double weight)
+{
   if ((q == points_[0] && p == points_[1]) || (q == points_[1] && p == points_[0])) {
     constrained_edge[2] = true;
+    edge_weight[2] = weight;
   } else if ((q == points_[0] && p == points_[2]) || (q == points_[2] && p == points_[0])) {
     constrained_edge[1] = true;
+    edge_weight[1] = weight;
   } else if ((q == points_[1] && p == points_[2]) || (q == points_[2] && p == points_[1])) {
     constrained_edge[0] = true;
+    edge_weight[0] = weight;
   }
 }
 
@@ -298,25 +309,31 @@ bool Triangle::GetConstrainedEdgeCW(const Point& p)
   return constrained_edge[0];
 }
 
-void Triangle::SetConstrainedEdgeCCW(const Point& p, bool ce)
+void Triangle::SetConstrainedEdgeCCW(const Point& p, bool ce, double weight)
 {
   if (&p == points_[0]) {
     constrained_edge[2] = ce;
+    edge_weight[2] = weight;
   } else if (&p == points_[1]) {
     constrained_edge[0] = ce;
+    edge_weight[0] = weight;
   } else {
     constrained_edge[1] = ce;
+    edge_weight[1] = weight;
   }
 }
 
-void Triangle::SetConstrainedEdgeCW(const Point& p, bool ce)
+void Triangle::SetConstrainedEdgeCW(const Point& p, bool ce, double weight)
 {
   if (&p == points_[0]) {
     constrained_edge[1] = ce;
+    edge_weight[1] = weight;
   } else if (&p == points_[1]) {
     constrained_edge[2] = ce;
+    edge_weight[2] = weight;
   } else {
     constrained_edge[0] = ce;
+    edge_weight[0] = weight;
   }
 }
 

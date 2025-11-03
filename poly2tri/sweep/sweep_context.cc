@@ -31,6 +31,7 @@
 #include "sweep_context.h"
 #include <algorithm>
 #include "advancing_front.h"
+#include "../common/polyline_processing.h"
 
 namespace p2t {
 
@@ -69,6 +70,9 @@ std::list<Triangle*> &SweepContext::GetMap()
 
 void SweepContext::InitTriangulation()
 {
+  // Validate and clean up the polyline
+  PolylineProcessing::ValidatePolyline(points_);
+  
   double xmax(points_[0]->x), xmin(points_[0]->x);
   double ymax(points_[0]->y), ymin(points_[0]->y);
 

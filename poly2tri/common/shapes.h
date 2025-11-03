@@ -44,33 +44,36 @@ struct Edge;
 
 struct P2T_DLL_SYMBOL Point {
 
-  double x, y;
+  double x, y, z;
 
   /// Default constructor does nothing (for performance).
   Point()
   {
     x = 0.0;
     y = 0.0;
+    z = 0.0;
   }
 
   /// The edges this point constitutes an upper ending point
   std::vector<Edge*> edge_list;
 
   /// Construct using coordinates.
-  Point(double x, double y);
+  Point(double x, double y, double z = 0.0);
 
   /// Set this point to all zeros.
   void set_zero()
   {
     x = 0.0;
     y = 0.0;
+    z = 0.0;
   }
 
   /// Set this point to some specified coordinates.
-  void set(double x_, double y_)
+  void set(double x_, double y_, double z_ = 0.0)
   {
     x = x_;
     y = y_;
+    z = z_;
   }
 
   /// Negate this point.
@@ -125,9 +128,10 @@ P2T_DLL_SYMBOL std::ostream& operator<<(std::ostream&, const Point&);
 struct P2T_DLL_SYMBOL Edge {
 
   Point* p, *q;
+  double weight;
 
   /// Constructor
-  Edge(Point& p1, Point& p2) : p(&p1), q(&p2)
+  Edge(Point& p1, Point& p2, double weight = 0.5) : p(&p1), q(&p2), weight(weight)
   {
     if (p1.y > p2.y) {
       q = &p1;
@@ -157,6 +161,8 @@ Triangle(Point& a, Point& b, Point& c);
 
 /// Flags to determine if an edge is a Constrained edge
 bool constrained_edge[3];
+/// Edge weights (0~1), only valid if constrained_edge is true
+double edge_weight[3];
 /// Flags to determine if an edge is a Delauney edge
 bool delaunay_edge[3];
 
@@ -169,7 +175,7 @@ Triangle* GetNeighbor(int index);
 void MarkNeighbor(Point* p1, Point* p2, Triangle* t);
 void MarkNeighbor(Triangle& t);
 
-void MarkConstrainedEdge(int index);
+void MarkConstrainedEdge(int index, double weight = 1.0);
 void MarkConstrainedEdge(Edge& edge);
 void MarkConstrainedEdge(Point* p, Point* q);
 
@@ -181,8 +187,8 @@ Triangle* NeighborCW(const Point& point);
 Triangle* NeighborCCW(const Point& point);
 bool GetConstrainedEdgeCCW(const Point& p);
 bool GetConstrainedEdgeCW(const Point& p);
-void SetConstrainedEdgeCCW(const Point& p, bool ce);
-void SetConstrainedEdgeCW(const Point& p, bool ce);
+void SetConstrainedEdgeCCW(const Point& p, bool ce, double weight = 1.0);
+void SetConstrainedEdgeCW(const Point& p, bool ce, double weight = 1.0);
 bool GetDelunayEdgeCCW(const Point& p);
 bool GetDelunayEdgeCW(const Point& p);
 void SetDelunayEdgeCCW(const Point& p, bool e);

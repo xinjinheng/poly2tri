@@ -39,35 +39,30 @@ AdvancingFront::AdvancingFront(Node& head, Node& tail)
   head_ = &head;
   tail_ = &tail;
   search_node_ = &head;
+  bst_root_ = nullptr;
+  
+  // Initialize BST with initial nodes
+  AddNodeToBST(&head);
+  AddNodeToBST(&tail);
 }
 
 Node* AdvancingFront::LocateNode(double x)
 {
-  Node* node = search_node_;
-
-  if (x < node->value) {
-    while ((node = node->prev) != nullptr) {
-      if (x >= node->value) {
-        search_node_ = node;
-        return node;
-      }
-    }
-  } else {
-    while ((node = node->next) != nullptr) {
-      if (x < node->value) {
-        search_node_ = node->prev;
-        return node->prev;
-      }
-    }
+  // Use BST to find the closest node
+  Node* node = BSTSearch(bst_root_, x);
+  if (!node) {
+    return nullptr;
   }
-  return nullptr;
+  
+  // Update search node for next time
+  search_node_ = node;
+  
+  return node;
 }
 
 Node* AdvancingFront::FindSearchNode(double x)
 {
-  (void)x; // suppress compiler warnings "unused parameter 'x'"
-  // TODO: implement BST index
-  return search_node_;
+  return BSTSearch(bst_root_, x);
 }
 
 Node* AdvancingFront::LocatePoint(const Point* point)
@@ -105,6 +100,94 @@ Node* AdvancingFront::LocatePoint(const Point* point)
 
 AdvancingFront::~AdvancingFront()
 {
+  // Clean up BST
+  // TODO: Implement BST cleanup
+}
+
+void AdvancingFront::AddNodeToBST(Node* node)
+{
+  bst_root_ = BSTInsert(bst_root_, node);
+}
+
+void AdvancingFront::RemoveNodeFromBST(Node* node)
+{
+  bst_root_ = BSTDelete(bst_root_, node->value);
+}
+
+BSTNode* AdvancingFront::BSTInsert(BSTNode* root, Node* node)
+{
+  if (root == nullptr) {
+    return new BSTNode(node);
+  }
+  
+  if (node->value < root->front_node->value) {
+    root->left = BSTInsert(root->left, node);
+  } else if (node->value > root->front_node->value) {
+    root->right = BSTInsert(root->right, node);
+  } else {
+    // Handle duplicate values (shouldn't happen in advancing front)
+    // We'll just add to the right subtree
+    root->right = BSTInsert(root->right, node);
+  }
+  
+  return root;
+}
+
+BSTNode* AdvancingFront::BSTDelete(BSTNode* root, double x)
+{
+  if (root == nullptr) {
+    return root;
+  }
+  
+  if (x < root->front_node->value) {
+    root->left = BSTDelete(root->left, x);
+  } else if (x > root->front_node->value) {
+    root->right = BSTDelete(root->right, x);
+  } else {
+    // Node with only one child or no child
+    if (root->left == nullptr) {
+      BSTNode* temp = root->right;
+      delete root;
+      return temp;
+    } else if (root->right == nullptr) {
+      BSTNode* temp = root->left;
+      delete root;
+      return temp;
+    }
+    
+    // Node with two children: Get the inorder successor (smallest in the right subtree)
+    BSTNode* temp = BSTFindMin(root->right);
+    
+    // Copy the inorder successor's data to this node
+    root->front_node = temp->front_node;
+    
+    // Delete the inorder successor
+    root->right = BSTDelete(root->right, temp->front_node->value);
+  }
+  
+  return root;
+}
+
+Node* AdvancingFront::BSTSearch(BSTNode* root, double x)
+{
+  if (root == nullptr || std::abs(root->front_node->value - x) < EPSILON) {
+    return root ? root->front_node : nullptr;
+  }
+  
+  if (x < root->front_node->value) {
+    return BSTSearch(root->left, x);
+  } else {
+    return BSTSearch(root->right, x);
+  }
+}
+
+BSTNode* AdvancingFront::BSTFindMin(BSTNode* root)
+{
+  BSTNode* current = root;
+  while (current && current->left != nullptr) {
+    current = current->left;
+  }
+  return current;
 }
 
 } // namespace p2t

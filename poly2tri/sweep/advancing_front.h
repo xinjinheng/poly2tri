@@ -57,6 +57,9 @@ struct Node {
 
 };
 
+// Forward declaration of BST node
+struct BSTNode;
+
 // Advancing front
 class AdvancingFront {
 public:
@@ -77,11 +80,35 @@ Node* LocateNode(double x);
 
 Node* LocatePoint(const Point* point);
 
+// Update BST when a node is added
+void AddNodeToBST(Node* node);
+
+// Update BST when a node is removed
+void RemoveNodeFromBST(Node* node);
+
 private:
 
 Node* head_, *tail_, *search_node_;
 
+// BST for efficient node lookup
+BSTNode* bst_root_;
+
 Node* FindSearchNode(double x);
+
+// BST operations
+BSTNode* BSTInsert(BSTNode* root, Node* node);
+BSTNode* BSTDelete(BSTNode* root, double x);
+Node* BSTSearch(BSTNode* root, double x);
+BSTNode* BSTFindMin(BSTNode* root);
+};
+
+// BST node for indexing advancing front nodes
+struct BSTNode {
+  Node* front_node;
+  BSTNode* left;
+  BSTNode* right;
+  
+  BSTNode(Node* node) : front_node(node), left(nullptr), right(nullptr) {}
 };
 
 inline Node* AdvancingFront::head()

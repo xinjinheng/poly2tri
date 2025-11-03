@@ -200,6 +200,9 @@ Node& Sweep::NewFrontTriangle(SweepContext& tcx, Point& point, Node& node)
   new_node->prev = &node;
   node.next->prev = new_node;
   node.next = new_node;
+  
+  // Update BST
+  tcx.front()->AddNodeToBST(new_node);
 
   if (!Legalize(tcx, *triangle)) {
     tcx.MapTriangleToNodes(*triangle);
@@ -393,6 +396,10 @@ bool Sweep::Legalize(SweepContext& tcx, Triangle& t)
       // then we should not try to legalize
       if (ot->constrained_edge[oi] || ot->delaunay_edge[oi]) {
         t.constrained_edge[i] = ot->constrained_edge[oi];
+        if (ot->constrained_edge[oi]) {
+          // Copy the edge weight as well
+          t.edge_weight[i] = ot->edge_weight[oi];
+        }
         continue;
       }
 
@@ -484,6 +491,12 @@ void Sweep::RotateTrianglePair(Triangle& t, Point& p, Triangle& ot, Point& op) c
   ce2 = t.GetConstrainedEdgeCW(p);
   ce3 = ot.GetConstrainedEdgeCCW(op);
   ce4 = ot.GetConstrainedEdgeCW(op);
+  
+  double ew1, ew2, ew3, ew4;
+  ew1 = t.edge_weight[t.EdgeIndex(t.PointCCW(p), &p)];
+  ew2 = t.edge_weight[t.EdgeIndex(&p, t.PointCW(p))];
+  ew3 = ot.edge_weight[ot.EdgeIndex(ot.PointCCW(op), &op)];
+  ew4 = ot.edge_weight[ot.EdgeIndex(&op, ot.PointCW(op))];
 
   bool de1, de2, de3, de4;
   de1 = t.GetDelunayEdgeCCW(p);
@@ -501,10 +514,10 @@ void Sweep::RotateTrianglePair(Triangle& t, Point& p, Triangle& ot, Point& op) c
   ot.SetDelunayEdgeCW(op, de4);
 
   // Remap constrained_edge
-  ot.SetConstrainedEdgeCCW(p, ce1);
-  t.SetConstrainedEdgeCW(p, ce2);
-  t.SetConstrainedEdgeCCW(op, ce3);
-  ot.SetConstrainedEdgeCW(op, ce4);
+  ot.SetConstrainedEdgeCCW(p, ce1, ew1);
+  t.SetConstrainedEdgeCW(p, ce2, ew2);
+  t.SetConstrainedEdgeCCW(op, ce3, ew3);
+  ot.SetConstrainedEdgeCW(op, ce4, ew4);
 
   // Remap neighbors
   // XXX: might optimize the markNeighbor by keeping track of
