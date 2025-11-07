@@ -32,6 +32,7 @@
 #pragma once
 
 #include "dll_symbol.h"
+#include "exceptions.h"
 
 #include <cmath>
 #include <cstddef>
@@ -54,7 +55,7 @@ struct P2T_DLL_SYMBOL Point {
   }
 
   /// The edges this point constitutes an upper ending point
-  std::vector<Edge*> edge_list;
+  std::vector<std::shared_ptr<Edge>> edge_list;
 
   /// Construct using coordinates.
   Point(double x, double y);
@@ -136,13 +137,13 @@ struct P2T_DLL_SYMBOL Edge {
       if (p1.x > p2.x) {
         q = &p1;
         p = &p2;
-      } else if (p1.x == p2.x) {
+      } else if (PointsEqual(p1, p2)) {
         // Repeat points
-        throw std::runtime_error("Edge::Edge: p1 == p2");
+        throw DuplicatePointException(p1.x, p1.y);
       }
     }
 
-    q->edge_list.push_back(this);
+    // Note: Using raw pointer here because Edge is owned by SweepContext
   }
 };
 
