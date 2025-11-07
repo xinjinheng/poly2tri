@@ -29,78 +29,39 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#pragma once
-
-#include "advancing_front.h"
-#include "sweep_context.h"
-#include "sweep.h"
-
-#include "../common/dll_symbol.h"
-#include <mutex>
-
-/**
- *
- * @author Mason Green <mason.green@gmail.com>
- *
- */
+#include "exception_monitor.h"
 
 namespace p2t {
 
-class P2T_DLL_SYMBOL CDT
-{
-public:
-
-  /**
-   * Constructor - add polyline with non repeating points
-   *
-   * @param polyline
-   */
-  CDT(const std::vector<Point*>& polyline);
-
-   /**
-   * Destructor - clean up memory
-   */
-  ~CDT();
-
-  /**
-   * Add a hole
-   *
-   * @param polyline
-   */
-  void AddHole(const std::vector<Point*>& polyline);
-
-  /**
-   * Add a steiner point
-   *
-   * @param point
-   */
-  void AddPoint(Point* point);
-
-  /**
-   * Triangulate - do this AFTER you've added the polyline, holes, and Steiner points
-   */
-  void Triangulate();
-
-  /**
-   * Get CDT triangles
-   */
-  std::vector<Triangle*> GetTriangles();
-
-  /**
-   * Get triangle map
-   */
-  std::list<Triangle*> GetMap();
-
-  private:
-
-  /**
-   * Internals
-   */
-
-  SweepContext* sweep_context_;
-  Sweep* sweep_;
-  mutable std::mutex mutex_;
-
-};
-
+void ExceptionMonitor::RegisterCallback(ExceptionCallback callback) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  callbacks_.push_back(callback);
 }
+
+void ExceptionMonitor::UnregisterAllCallbacks() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  callbacks_.clear();
+}
+
+void ExceptionMonitor::NotifyException(const std::string& type, const std::string& message) {
+  if (!enabled_) {
+    return;
+  }
+  
+  std::lock_guard<std::mutex> lock(mutex_);
+  for (const auto& callback : callbacks_) {
+    callback(type, message);
+  }
+}
+
+void ExceptionMonitor::Enable(bool enabled) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  enabled_ = enabled;
+}
+
+bool ExceptionMonitor::IsEnabled() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return enabled_;
+}
+
+} // namespace p2t

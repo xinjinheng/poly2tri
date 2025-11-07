@@ -35,9 +35,11 @@
 #define _USE_MATH_DEFINES
 
 #include "shapes.h"
+#include "exceptions.h"
 
 #include <cmath>
 #include <exception>
+#include <vector>
 
 // C99 removes M_PI from math.h
 #ifndef M_PI
@@ -51,6 +53,51 @@ const double PI_div2 = 1.57079632679489661923;
 const double EPSILON = 1e-12;
 
 enum Orientation { CW, CCW, COLLINEAR };
+
+// Check if two points are equal with epsilon tolerance
+inline bool PointsEqual(const Point& p1, const Point& p2) {
+  return std::abs(p1.x - p2.x) < EPSILON && std::abs(p1.y - p2.y) < EPSILON;
+}
+
+// Check if two line segments intersect
+// Returns true if segments intersect, false otherwise
+// Segments are (p1, p2) and (p3, p4)
+inline bool SegmentsIntersect(const Point& p1, const Point& p2, const Point& p3, const Point& p4) {
+  double dx1 = p2.x - p1.x;
+  double dy1 = p2.y - p1.y;
+  double dx2 = p4.x - p3.x;
+  double dy2 = p4.y - p3.y;
+  double dx3 = p3.x - p1.x;
+  double dy3 = p3.y - p1.y;
+  
+  double denominator = dy2 * dx1 - dx2 * dy1;
+  if (std::abs(denominator) < EPSILON) {
+    return false; // Collinear or parallel
+  }
+  
+  double ua = (dx2 * dy3 - dy2 * dx3) / denominator;
+  double ub = (dx1 * dy3 - dy1 * dx3) / denominator;
+  
+  return ua >= 0.0 && ua <= 1.0 && ub >= 0.0 && ub <= 1.0;
+}
+
+// Check if a point is inside a polygon using ray casting algorithm
+// polygon: vector of points defining the polygon (must be closed)
+// point: point to check
+// Returns true if point is inside polygon, false otherwise
+inline bool PointInPolygon(const std::vector<Point*>& polygon, const Point& point) {
+  bool inside = false;
+  size_t n = polygon.size();
+  
+  for (size_t i = 0, j = n - 1; i < n; j = i++) {
+    if (((polygon[i]->y > point.y) != (polygon[j]->y > point.y)) &&
+        (point.x < (polygon[j]->x - polygon[i]->x) * (point.y - polygon[i]->y) / (polygon[j]->y - polygon[i]->y) + polygon[i]->x)) {
+      inside = !inside;
+    }
+  }
+  
+  return inside;
+}
 
 /**
  * Forumla to calculate signed area<br>
