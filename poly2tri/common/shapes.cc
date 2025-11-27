@@ -55,6 +55,17 @@ Triangle::Triangle(Point& a, Point& b, Point& c)
 // Update neighbor pointers
 void Triangle::MarkNeighbor(Point* p1, Point* p2, Triangle* t)
 {
+  if (p1 == nullptr || p2 == nullptr) {
+    throw NullPointerException::Create("p1 or p2");
+  }
+  if (t == nullptr) {
+    throw NullPointerException::Create("t");
+  }
+  if (!Contains(p1) || !Contains(p2)) {
+    std::ostringstream oss;
+    oss << "Triangle does not contain the edge (" << p1->x << ", " << p1->y << ")-(" << p2->x << ", " << p2->y << ")";
+    throw InvalidInputException(oss.str());
+  }
   if ((p1 == points_[2] && p2 == points_[1]) || (p1 == points_[1] && p2 == points_[2]))
     neighbors_[0] = t;
   else if ((p1 == points_[0] && p2 == points_[2]) || (p1 == points_[2] && p2 == points_[0]))
@@ -62,7 +73,7 @@ void Triangle::MarkNeighbor(Point* p1, Point* p2, Triangle* t)
   else if ((p1 == points_[0] && p2 == points_[1]) || (p1 == points_[1] && p2 == points_[0]))
     neighbors_[2] = t;
   else
-    assert(0);
+    throw InvalidInputException("Invalid edge for triangle");
 }
 
 // Exhaustive search to update neighbor pointers
@@ -126,8 +137,17 @@ void Triangle::ClearDelunayEdges()
 
 Point* Triangle::OppositePoint(Triangle& t, const Point& p)
 {
+  if (!t.Contains(&p)) {
+    std::ostringstream oss;
+    oss << "Triangle does not contain point (" << p.x << ", " << p.y << ")";
+    throw InvalidInputException(oss.str());
+  }
   Point *cw = t.PointCW(p);
-  return PointCW(*cw);
+  Point* opposite = PointCW(*cw);
+  if (opposite == nullptr) {
+    throw TriangulationFailedException::InvalidTriangle("Opposite point not found");
+  }
+  return opposite;
 }
 
 // Legalized triangle by rotating clockwise around point(0)

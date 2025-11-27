@@ -29,13 +29,16 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "advancing_front.h"
-
+#include "../common/exceptions.h"
 #include <cassert>
 
 namespace p2t {
 
 AdvancingFront::AdvancingFront(Node& head, Node& tail)
 {
+  if (&head == nullptr || &tail == nullptr) {
+    throw NullPointerException::Create("AdvancingFront constructor");
+  }
   head_ = &head;
   tail_ = &tail;
   search_node_ = &head;
@@ -43,6 +46,10 @@ AdvancingFront::AdvancingFront(Node& head, Node& tail)
 
 Node* AdvancingFront::LocateNode(double x)
 {
+  if (search_node_ == nullptr) {
+    throw NullPointerException::Create("AdvancingFront::search_node_");
+  }
+
   Node* node = search_node_;
 
   if (x < node->value) {
@@ -65,6 +72,9 @@ Node* AdvancingFront::LocateNode(double x)
 
 Node* AdvancingFront::FindSearchNode(double x)
 {
+  if (search_node_ == nullptr) {
+    throw NullPointerException::Create("AdvancingFront::search_node_");
+  }
   (void)x; // suppress compiler warnings "unused parameter 'x'"
   // TODO: implement BST index
   return search_node_;
@@ -72,16 +82,22 @@ Node* AdvancingFront::FindSearchNode(double x)
 
 Node* AdvancingFront::LocatePoint(const Point* point)
 {
+  if (point == nullptr) {
+    throw NullPointerException::Create("AdvancingFront::LocatePoint point");
+  }
   const double px = point->x;
   Node* node = FindSearchNode(px);
+  if (node == nullptr || node->point == nullptr) {
+    throw NullPointerException::Create("AdvancingFront::LocatePoint node or node->point");
+  }
   const double nx = node->point->x;
 
   if (px == nx) {
     if (point != node->point) {
       // We might have two nodes with same x value for a short time
-      if (point == node->prev->point) {
+      if (node->prev != nullptr && point == node->prev->point) {
         node = node->prev;
-      } else if (point == node->next->point) {
+      } else if (node->next != nullptr && point == node->next->point) {
         node = node->next;
       } else {
         assert(0);
@@ -89,12 +105,18 @@ Node* AdvancingFront::LocatePoint(const Point* point)
     }
   } else if (px < nx) {
     while ((node = node->prev) != nullptr) {
+      if (node->point == nullptr) {
+        throw NullPointerException::Create("AdvancingFront::LocatePoint node->point");
+      }
       if (point == node->point) {
         break;
       }
     }
   } else {
     while ((node = node->next) != nullptr) {
+      if (node->point == nullptr) {
+        throw NullPointerException::Create("AdvancingFront::LocatePoint node->point");
+      }
       if (point == node->point)
         break;
     }

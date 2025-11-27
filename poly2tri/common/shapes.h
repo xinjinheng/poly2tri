@@ -32,6 +32,7 @@
 #pragma once
 
 #include "dll_symbol.h"
+#include "exceptions.h"
 
 #include <cmath>
 #include <cstddef>

@@ -34,32 +34,128 @@ namespace p2t {
 
 CDT::CDT(const std::vector<Point*>& polyline)
 {
+  if (polyline.empty()) {
+    throw InvalidInputException::EmptyContainer("polyline");
+  }
+  try {
+    g_validator.CheckPolygonValidity(polyline);
+  } catch (const Poly2TriException& e) {
+    throw InvalidInputException("Invalid main polygon: " + std::string(e.what()));
+  }
   sweep_context_ = new SweepContext(polyline);
+  if (sweep_context_ == nullptr) {
+    throw NullPointerException::Create("sweep_context_");
+  }
   sweep_ = new Sweep;
+  if (sweep_ == nullptr) {
+    delete sweep_context_;
+    throw NullPointerException::Create("sweep_");
+  }
 }
 
 void CDT::AddHole(const std::vector<Point*>& polyline)
 {
+  if (sweep_context_ == nullptr) {
+    throw NullPointerException::Create("sweep_context_");
+  }
+  if (polyline.empty()) {
+    throw InvalidInputException::EmptyContainer("hole polyline");
+  }
+  try {
+    // Get the main polygon from the sweep context
+    const std::vector<Point*>& main_polygon = sweep_context_->GetPoints();
+    // Check if this is the first hole
+    const std::vector<std::vector<Point*>>& existing_holes = sweep_context_->GetHoles();
+    g_validator.CheckHoleValidity(polyline, main_polygon, existing_holes);
+  } catch (const Poly2TriException& e) {
+    throw InvalidInputException("Invalid hole: " + std::string(e.what()));
+  }
   sweep_context_->AddHole(polyline);
 }
 
 void CDT::AddPoint(Point* point) {
+  if (sweep_context_ == nullptr) {
+    throw NullPointerException::Create("sweep_context_");
+  }
+  if (point == nullptr) {
+    throw NullPointerException::Create("point");
+  }
+  if (!g_validator.IsValidPoint(point)) {
+    std::ostringstream oss;
+    oss << "Invalid Steiner point (" << point->x << ", " << point->y << ")";
+    throw InvalidInputException(oss.str());
+  }
+  // Check if the point is already in the main polygon or any hole
+  const std::vector<Point*>& main_polygon = sweep_context_->GetPoints();
+  for (const Point* p : main_polygon) {
+    if (g_validator.ArePointsEqual(point, p)) {
+      std::ostringstream oss;
+      oss << "Duplicate Steiner point (" << point->x << ", " << point->y << ")";
+      throw InvalidInputException::DuplicatePoint(oss.str());
+    }
+  }
+  const std::vector<std::vector<Point*>>& holes = sweep_context_->GetHoles();
+  for (const std::vector<Point*>& hole : holes) {
+    for (const Point* p : hole) {
+      if (g_validator.ArePointsEqual(point, p)) {
+        std::ostringstream oss;
+        oss << "Duplicate Steiner point (" << point->x << ", " << point->y << ")";
+        throw InvalidInputException::DuplicatePoint(oss.str());
+      }
+    }
+  }
+  // Check if the point is inside the main polygon and not inside any hole
+  if (!g_validator.IsPointInPolygon(point, main_polygon)) {
+    std::ostringstream oss;
+    oss << "Steiner point (" << point->x << ", " << point->y << ") is outside the main polygon";
+    throw InvalidInputException(oss.str());
+  }
+  for (const std::vector<Point*>& hole : holes) {
+    if (g_validator.IsPointInPolygon(point, hole)) {
+      std::ostringstream oss;
+      oss << "Steiner point (" << point->x << ", " << point->y << ") is inside a hole";
+      throw InvalidInputException(oss.str());
+    }
+  }
   sweep_context_->AddPoint(point);
 }
 
 void CDT::Triangulate()
 {
-  sweep_->Triangulate(*sweep_context_);
+  if (sweep_ == nullptr || sweep_context_ == nullptr) {
+    throw NullPointerException::Create("sweep_ or sweep_context_");
+  }
+  try {
+    sweep_->Triangulate(*sweep_context_);
+  } catch (const Poly2TriException& e) {
+    throw TriangulationFailedException("Triangulation failed: " + std::string(e.what()));
+  } catch (const std::exception& e) {
+    throw TriangulationFailedException("Unexpected error during triangulation: " + std::string(e.what()));
+  }
 }
 
 std::vector<p2t::Triangle*> CDT::GetTriangles()
 {
-  return sweep_context_->GetTriangles();
+  if (sweep_context_ == nullptr) {
+    throw NullPointerException::Create("sweep_context_");
+  }
+  std::vector<Triangle*> triangles = sweep_context_->GetTriangles();
+  if (triangles.empty()) {
+    throw InvalidInputException::EmptyContainer("triangles");
+  }
+  return triangles;
 }
 
 std::list<p2t::Triangle*> CDT::GetMap()
 {
-  return sweep_context_->GetMap();
+  if (sweep_context_ == nullptr) {
+    throw NullPointerException::Create("sweep_context_");
+  }
+  std::list<Triangle*> map = sweep_context_->GetMap();
+  if (map.empty()) {
+    throw InvalidInputException::EmptyContainer("triangle map");
+  }
+  return map;
 }
 
 CDT::~CDT()

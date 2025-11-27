@@ -36,6 +36,8 @@
 #include "sweep.h"
 
 #include "../common/dll_symbol.h"
+#include "../common/exceptions.h"
+#include "../common/validators.h"
 
 /**
  *

@@ -29,6 +29,7 @@
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include <poly2tri/poly2tri.h>
+#include <poly2tri/common/exceptions.h>
 
 #include <GLFW/glfw3.h>
 
@@ -110,126 +111,169 @@ template <class C> void FreeClear(C& cntr)
 
 int main(int argc, char* argv[])
 {
-  string filename;
-  size_t num_points = 0u;
-  double max, min;
-  double zoom;
+  try {
+    string filename;
+    size_t num_points = 0u;
+    double max, min;
+    double zoom;
 
-  if (argc != 2 && argc != 5) {
-    cout << "-== USAGE ==-" << endl;
-    cout << "Load Data File: p2t <filename> <center_x> <center_y> <zoom>" << endl;
-    cout << "  Example: build/testbed/p2t testbed/data/dude.dat 350 500 3" << endl;
-    cout << "Load Data File with Auto-Zoom: p2t <filename>" << endl;
-    cout << "  Example: build/testbed/p2t testbed/data/nazca_monkey.dat" << endl;
-    cout << "Generate Random Polygon: p2t random <num_points> <box_radius> <zoom>" << endl;
-    cout << "  Example: build/testbed/p2t random 100 1 500" << endl;
+    if (argc != 2 && argc != 5) {
+      cout << "-== USAGE ==-" << endl;
+      cout << "Load Data File: p2t <filename> <center_x> <center_y> <zoom>" << endl;
+      cout << "  Example: build/testbed/p2t testbed/data/dude.dat 350 500 3" << endl;
+      cout << "Load Data File with Auto-Zoom: p2t <filename>" << endl;
+      cout << "  Example: build/testbed/p2t testbed/data/nazca_monkey.dat" << endl;
+      cout << "Generate Random Polygon: p2t random <num_points> <box_radius> <zoom>" << endl;
+      cout << "  Example: build/testbed/p2t random 100 1 500" << endl;
+      return 1;
+    }
+
+    // If true, adjust the zoom settings to fit the input geometry to the window
+    const bool autozoom = (argc == 2);
+
+    if (!autozoom && string(argv[1]) == "random") {
+      num_points = atoi(argv[2]);
+      random_distribution = true;
+      char* pEnd;
+      max = strtod(argv[3], &pEnd);
+      min = -max;
+      cx = cy = 0.0;
+      zoom = atof(argv[4]);
+    } else {
+      filename = string(argv[1]);
+      if (!autozoom) {
+        cx = atof(argv[2]);
+        cy = atof(argv[3]);
+        zoom = atof(argv[4]);
+      }
+    }
+
+    if (random_distribution) {
+      GenerateRandomPointDistribution(num_points, min, max, polyline, holes, steiner);
+    } else {
+      // Load pointset from file
+      if (!ParseFile(filename, polyline, holes, steiner)) {
+        return 2;
+      }
+    }
+
+    if (autozoom) {
+      assert(0.0 <= autozoom_border && autozoom_border < 1.0);
+      const auto bbox = BoundingBox(polyline);
+      Point center = bbox.first + bbox.second;
+      center *= 0.5;
+      cx = center.x;
+      cy = center.y;
+      Point sides = bbox.second - bbox.first;
+      zoom = 2.0 * (1.0 - autozoom_border) * std::min((double)default_window_width / sides.x, (double)default_window_height / sides.y);
+      std::cout << "center_x = " << cx << std::endl;
+      std::cout << "center_y = " << cy << std::endl;
+      std::cout << "zoom = " << zoom << std::endl;
+    }
+
+    Init(default_window_width, default_window_height);
+
+    /*
+     * Perform triangulation!
+     */
+
+    double init_time = glfwGetTime();
+
+    /*
+     * STEP 1: Create CDT and add primary polyline
+     * NOTE: polyline must be a simple polygon. The polyline's points
+     * constitute constrained edges. No repeat points!!!
+     */
+    CDT* cdt = nullptr;
+    try {
+      cdt = new CDT(polyline);
+
+      /*
+       * STEP 2: Add holes or Steiner points
+       */
+      for (const auto& hole : holes) {
+        if (hole.empty()) {
+          throw InvalidInputException::EmptyContainer("hole");
+        }
+        cdt->AddHole(hole);
+      }
+      for (const auto& s : steiner) {
+        if (s == nullptr) {
+          throw NullPointerException::Create("Steiner point");
+        }
+        cdt->AddPoint(s);
+      }
+
+      /*
+       * STEP 3: Triangulate!
+       */
+      cdt->Triangulate();
+    } catch (const Poly2TriException& e) {
+      std::cerr << "Poly2Tri error: " << e.what() << std::endl;
+      if (cdt != nullptr) {
+        delete cdt;
+      }
+      FreeClear(polyline);
+      for (vector<Point*>& hole : holes) {
+        FreeClear(hole);
+      }
+      FreeClear(steiner);
+      ShutDown(1);
+      return 1;
+    } catch (const std::exception& e) {
+      std::cerr << "Unexpected error: " << e.what() << std::endl;
+      if (cdt != nullptr) {
+        delete cdt;
+      }
+      FreeClear(polyline);
+      for (vector<Point*>& hole : holes) {
+        FreeClear(hole);
+      }
+      FreeClear(steiner);
+      ShutDown(1);
+      return 1;
+    }
+
+    double dt = glfwGetTime() - init_time;
+
+    triangles = cdt->GetTriangles();
+    map = cdt->GetMap();
+    const size_t points_in_holes = 
+        std::accumulate(holes.cbegin(), holes.cend(), size_t(0),
+                        [](size_t cumul, const vector<Point*>& hole) { return cumul + hole.size(); });
+
+    cout << "Number of primary constrained edges = " << polyline.size() << endl;
+    cout << "Number of holes = " << holes.size() << endl;
+    cout << "Number of constrained edges in holes = " << points_in_holes << endl;
+    cout << "Number of Steiner points = " << steiner.size() << endl;
+    cout << "Total number of points = " << (polyline.size() + points_in_holes + steiner.size())
+         << endl;
+    cout << "Number of triangles = " << triangles.size() << endl;
+    cout << "Is Delaunay = " << (IsDelaunay(triangles) ? "true" : "false") << endl;
+    cout << "Elapsed time (ms) = " << dt * 1000.0 << endl;
+
+    MainLoop(zoom);
+
+    // Cleanup
+    delete cdt;
+    FreeClear(polyline);
+    for (vector<Point*>& hole : holes) {
+      FreeClear(hole);
+    }
+    FreeClear(steiner);
+
+    ShutDown(0);
+    return 0;
+  } catch (const std::exception& e) {
+    std::cerr << "Unexpected error: " << e.what() << std::endl;
+    FreeClear(polyline);
+    for (vector<Point*>& hole : holes) {
+      FreeClear(hole);
+    }
+    FreeClear(steiner);
+    ShutDown(1);
     return 1;
   }
-
-  // If true, adjust the zoom settings to fit the input geometry to the window
-  const bool autozoom = (argc == 2);
-
-  if (!autozoom && string(argv[1]) == "random") {
-    num_points = atoi(argv[2]);
-    random_distribution = true;
-    char* pEnd;
-    max = strtod(argv[3], &pEnd);
-    min = -max;
-    cx = cy = 0.0;
-    zoom = atof(argv[4]);
-  } else {
-    filename = string(argv[1]);
-    if (!autozoom) {
-      cx = atof(argv[2]);
-      cy = atof(argv[3]);
-      zoom = atof(argv[4]);
-    }
-  }
-
-  if (random_distribution) {
-    GenerateRandomPointDistribution(num_points, min, max, polyline, holes, steiner);
-  } else {
-    // Load pointset from file
-    if (!ParseFile(filename, polyline, holes, steiner)) {
-      return 2;
-    }
-  }
-
-  if (autozoom) {
-    assert(0.0 <= autozoom_border && autozoom_border < 1.0);
-    const auto bbox = BoundingBox(polyline);
-    Point center = bbox.first + bbox.second;
-    center *= 0.5;
-    cx = center.x;
-    cy = center.y;
-    Point sides = bbox.second - bbox.first;
-    zoom = 2.0 * (1.0 - autozoom_border) * std::min((double)default_window_width / sides.x, (double)default_window_height / sides.y);
-    std::cout << "center_x = " << cx << std::endl;
-    std::cout << "center_y = " << cy << std::endl;
-    std::cout << "zoom = " << zoom << std::endl;
-  }
-
-  Init(default_window_width, default_window_height);
-
-  /*
-   * Perform triangulation!
-   */
-
-  double init_time = glfwGetTime();
-
-  /*
-   * STEP 1: Create CDT and add primary polyline
-   * NOTE: polyline must be a simple polygon. The polyline's points
-   * constitute constrained edges. No repeat points!!!
-   */
-  CDT* cdt = new CDT(polyline);
-
-  /*
-   * STEP 2: Add holes or Steiner points
-   */
-  for (const auto& hole : holes) {
-    assert(!hole.empty());
-    cdt->AddHole(hole);
-  }
-  for (const auto& s : steiner) {
-    cdt->AddPoint(s);
-  }
-
-  /*
-   * STEP 3: Triangulate!
-   */
-  cdt->Triangulate();
-
-  double dt = glfwGetTime() - init_time;
-
-  triangles = cdt->GetTriangles();
-  map = cdt->GetMap();
-  const size_t points_in_holes =
-      std::accumulate(holes.cbegin(), holes.cend(), size_t(0),
-                      [](size_t cumul, const vector<Point*>& hole) { return cumul + hole.size(); });
-
-  cout << "Number of primary constrained edges = " << polyline.size() << endl;
-  cout << "Number of holes = " << holes.size() << endl;
-  cout << "Number of constrained edges in holes = " << points_in_holes << endl;
-  cout << "Number of Steiner points = " << steiner.size() << endl;
-  cout << "Total number of points = " << (polyline.size() + points_in_holes + steiner.size())
-       << endl;
-  cout << "Number of triangles = " << triangles.size() << endl;
-  cout << "Is Delaunay = " << (IsDelaunay(triangles) ? "true" : "false") << endl;
-  cout << "Elapsed time (ms) = " << dt * 1000.0 << endl;
-
-  MainLoop(zoom);
-
-  // Cleanup
-  delete cdt;
-  FreeClear(polyline);
-  for (vector<Point*>& hole : holes) {
-    FreeClear(hole);
-  }
-  FreeClear(steiner);
-
-  ShutDown(0);
-  return 0;
 }
 
 bool ParseFile(string filename, vector<Point*>& out_polyline, vector<vector<Point*>>& out_holes,
@@ -245,52 +289,114 @@ bool ParseFile(string filename, vector<Point*>& out_polyline, vector<vector<Poin
   try {
     string line;
     ifstream myfile(filename);
-    if (myfile.is_open()) {
-      while (!myfile.eof()) {
-        getline(myfile, line);
-        if (line.empty()) {
-          break;
-        }
-        istringstream iss(line);
-        vector<string> tokens;
-        copy(istream_iterator<string>(iss), istream_iterator<string>(), back_inserter(tokens));
-        if (tokens.empty()) {
-          break;
-        } else if (tokens.size() == 1u) {
-          const auto token = tokens[0];
-          if (token == "HOLE") {
-            state = Hole;
-            out_holes.emplace_back();
-            hole = &out_holes.back();
-          } else if (token == "STEINER") {
-            state = Steiner;
-          } else {
-            throw runtime_error("Invalid token [" + token + "]");
-          }
+    if (!myfile.is_open()) {
+      throw runtime_error("File not opened: " + filename);
+    }
+    int line_number = 0;
+    while (getline(myfile, line)) {
+      line_number++;
+      // Skip empty lines
+      if (line.empty()) {
+        continue;
+      }
+      // Skip comment lines
+      if (line[0] == '#') {
+        continue;
+      }
+      istringstream iss(line);
+      vector<string> tokens;
+      copy(istream_iterator<string>(iss), istream_iterator<string>(), back_inserter(tokens));
+      if (tokens.empty()) {
+        continue;
+      } else if (tokens.size() == 1u) {
+        const auto token = tokens[0];
+        if (token == "HOLE") {
+          state = Hole;
+          out_holes.emplace_back();
+          hole = &out_holes.back();
+        } else if (token == "STEINER") {
+          state = Steiner;
         } else {
+          throw runtime_error("Invalid token [" + token + "] on line " + to_string(line_number));
+        }
+      } else if (tokens.size() >= 2u) {
+        try {
           double x = StringToDouble(tokens[0]);
           double y = StringToDouble(tokens[1]);
+          // Check if x or y is NaN or infinite
+          if (isnan(x) || isinf(x) || isnan(y) || isinf(y)) {
+            throw runtime_error("Invalid coordinates (" + tokens[0] + ", " + tokens[1] + ") on line " + to_string(line_number));
+          }
+          // Check if x or y is too large or too small
+          if (fabs(x) > 1e18 || fabs(y) > 1e18) {
+            throw runtime_error("Coordinates too large (" + tokens[0] + ", " + tokens[1] + ") on line " + to_string(line_number));
+          }
           switch (state) {
             case Polyline:
               out_polyline.push_back(new Point(x, y));
               break;
             case Hole:
-              assert(hole != nullptr);
+              if (hole == nullptr) {
+                throw runtime_error("Hole section not properly started on line " + to_string(line_number));
+              }
               hole->push_back(new Point(x, y));
               break;
             case Steiner:
               out_steiner.push_back(new Point(x, y));
               break;
             default:
-              assert(0);
+              throw runtime_error("Invalid parser state on line " + to_string(line_number));
           }
+        } catch (const invalid_argument& e) {
+          throw runtime_error("Invalid number format on line " + to_string(line_number) + ": " + e.what());
+        } catch (const out_of_range& e) {
+          throw runtime_error("Number out of range on line " + to_string(line_number) + ": " + e.what());
         }
+      } else {
+        throw runtime_error("Invalid number of tokens on line " + to_string(line_number));
       }
-    } else {
-      throw runtime_error("File not opened");
+    }
+    myfile.close();
+    // Validate that polyline is not empty
+    if (out_polyline.empty()) {
+      throw runtime_error("Polyline is empty");
+    }
+    // Validate that polyline has at least 3 points
+    if (out_polyline.size() < 3) {
+      throw runtime_error("Polyline has less than 3 points");
+    }
+    // Validate that polyline is closed
+    if (*out_polyline.front() != *out_polyline.back()) {
+      throw runtime_error("Polyline is not closed");
+    }
+    // Validate that holes are not empty and have at least 3 points
+    for (const auto& h : out_holes) {
+      if (h.empty()) {
+        throw runtime_error("Hole is empty");
+      }
+      if (h.size() < 3) {
+        throw runtime_error("Hole has less than 3 points");
+      }
+      // Validate that hole is closed
+      if (*h.front() != *h.back()) {
+        throw runtime_error("Hole is not closed");
+      }
+    }
+    // Validate that Steiner points are not null
+    for (const auto& s : out_steiner) {
+      if (s == nullptr) {
+        throw runtime_error("Steiner point is null");
+      }
     }
   } catch (exception& e) {
     cerr << "Error parsing file: " << e.what() << endl;
+    // Clean up any memory allocated before the error
+    FreeClear(out_polyline);
+    for (vector<Point*>& h : out_holes) {
+      FreeClear(h);
+    }
+    out_holes.clear();
+    FreeClear(out_steiner);
     return false;
   }
   return true;

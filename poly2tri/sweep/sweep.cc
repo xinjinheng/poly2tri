@@ -32,6 +32,7 @@
 #include "sweep_context.h"
 #include "advancing_front.h"
 #include "../common/utils.h"
+#include "../common/exceptions.h"
 
 #include <cassert>
 #include <stdexcept>
@@ -41,22 +42,46 @@ namespace p2t {
 // Triangulate simple polygon with holes
 void Sweep::Triangulate(SweepContext& tcx)
 {
-  tcx.InitTriangulation();
-  tcx.CreateAdvancingFront();
-  // Sweep points; build mesh
-  SweepPoints(tcx);
-  // Clean up
-  FinalizationPolygon(tcx);
+  if (&tcx == nullptr) {
+    throw NullPointerException::Create("Sweep::Triangulate tcx");
+  }
+
+  try {
+    tcx.InitTriangulation();
+    tcx.CreateAdvancingFront();
+    // Sweep points; build mesh
+    SweepPoints(tcx);
+    // Clean up
+    FinalizationPolygon(tcx);
+  } catch (const Poly2TriException& e) {
+    throw;
+  } catch (const std::exception& e) {
+    throw TriangulationFailedException::Create("Sweep::Triangulate failed: " + std::string(e.what()));
+  }
 }
 
 void Sweep::SweepPoints(SweepContext& tcx)
 {
-  for (size_t i = 1; i < tcx.point_count(); i++) {
-    Point& point = *tcx.GetPoint(i);
-    Node* node = &PointEvent(tcx, point);
-    for (auto& j : point.edge_list) {
-      EdgeEvent(tcx, j, node);
+  if (&tcx == nullptr) {
+    throw NullPointerException::Create("Sweep::SweepPoints tcx");
+  }
+
+  try {
+    for (size_t i = 1; i < tcx.point_count(); i++) {
+      Point* point_ptr = tcx.GetPoint(i);
+      if (point_ptr == nullptr) {
+        throw NullPointerException::Create("Sweep::SweepPoints point");
+      }
+      Point& point = *point_ptr;
+      Node* node = &PointEvent(tcx, point);
+      for (auto& j : point.edge_list) {
+        EdgeEvent(tcx, j, node);
+      }
     }
+  } catch (const Poly2TriException& e) {
+    throw;
+  } catch (const std::exception& e) {
+    throw TriangulationFailedException::Create("Sweep::SweepPoints failed: " + std::string(e.what()));
   }
 }
 
@@ -77,25 +102,38 @@ void Sweep::FinalizationPolygon(SweepContext& tcx)
 
 Node& Sweep::PointEvent(SweepContext& tcx, Point& point)
 {
-  Node* node_ptr = tcx.LocateNode(point);
-  if (!node_ptr || !node_ptr->point || !node_ptr->next || !node_ptr->next->point)
-  {
-    throw std::runtime_error("PointEvent - null node");
+  if (&tcx == nullptr) {
+    throw NullPointerException::Create("Sweep::PointEvent tcx");
+  }
+  if (&point == nullptr) {
+    throw NullPointerException::Create("Sweep::PointEvent point");
   }
 
-  Node& node = *node_ptr;
-  Node& new_node = NewFrontTriangle(tcx, point, node);
+  try {
+    Node* node_ptr = tcx.LocateNode(point);
+    if (!node_ptr || !node_ptr->point || !node_ptr->next || !node_ptr->next->point)
+    {
+      throw NullPointerException::Create("Sweep::PointEvent node");
+    }
 
-  // Only need to check +epsilon since point never have smaller
-  // x value than node due to how we fetch nodes from the front
-  if (point.x <= node.point->x + EPSILON) {
-    Fill(tcx, node);
+    Node& node = *node_ptr;
+    Node& new_node = NewFrontTriangle(tcx, point, node);
+
+    // Only need to check +epsilon since point never have smaller
+    // x value than node due to how we fetch nodes from the front
+    if (point.x <= node.point->x + EPSILON) {
+      Fill(tcx, node);
+    }
+
+    //tcx.AddNode(new_node);
+
+    FillAdvancingFront(tcx, new_node);
+    return new_node;
+  } catch (const Poly2TriException& e) {
+    throw;
+  } catch (const std::exception& e) {
+    throw TriangulationFailedException::Create("Sweep::PointEvent failed: " + std::string(e.what()));
   }
-
-  //tcx.AddNode(new_node);
-
-  FillAdvancingFront(tcx, new_node);
-  return new_node;
 }
 
 void Sweep::EdgeEvent(SweepContext& tcx, Edge* edge, Node* node)
@@ -188,24 +226,52 @@ bool Sweep::IsEdgeSideOfTriangle(Triangle& triangle, Point& ep, Point& eq)
 
 Node& Sweep::NewFrontTriangle(SweepContext& tcx, Point& point, Node& node)
 {
-  Triangle* triangle = new Triangle(point, *node.point, *node.next->point);
-
-  triangle->MarkNeighbor(*node.triangle);
-  tcx.AddToMap(triangle);
-
-  Node* new_node = new Node(point);
-  nodes_.push_back(new_node);
-
-  new_node->next = node.next;
-  new_node->prev = &node;
-  node.next->prev = new_node;
-  node.next = new_node;
-
-  if (!Legalize(tcx, *triangle)) {
-    tcx.MapTriangleToNodes(*triangle);
+  if (&tcx == nullptr) {
+    throw NullPointerException::Create("Sweep::NewFrontTriangle tcx");
+  }
+  if (&point == nullptr) {
+    throw NullPointerException::Create("Sweep::NewFrontTriangle point");
+  }
+  if (&node == nullptr) {
+    throw NullPointerException::Create("Sweep::NewFrontTriangle node");
+  }
+  if (node.point == nullptr) {
+    throw NullPointerException::Create("Sweep::NewFrontTriangle node.point");
+  }
+  if (node.next == nullptr) {
+    throw NullPointerException::Create("Sweep::NewFrontTriangle node.next");
+  }
+  if (node.next->point == nullptr) {
+    throw NullPointerException::Create("Sweep::NewFrontTriangle node.next->point");
+  }
+  if (node.triangle == nullptr) {
+    throw NullPointerException::Create("Sweep::NewFrontTriangle node.triangle");
   }
 
-  return *new_node;
+  try {
+    Triangle* triangle = new Triangle(point, *node.point, *node.next->point);
+
+    triangle->MarkNeighbor(*node.triangle);
+    tcx.AddToMap(triangle);
+
+    Node* new_node = new Node(point);
+    nodes_.push_back(new_node);
+
+    new_node->next = node.next;
+    new_node->prev = &node;
+    node.next->prev = new_node;
+    node.next = new_node;
+
+    if (!Legalize(tcx, *triangle)) {
+      tcx.MapTriangleToNodes(*triangle);
+    }
+
+    return *new_node;
+  } catch (const Poly2TriException& e) {
+    throw;
+  } catch (const std::exception& e) {
+    throw TriangulationFailedException::Create("Sweep::NewFrontTriangle failed: " + std::string(e.what()));
+  }
 }
 
 void Sweep::Fill(SweepContext& tcx, Node& node)
@@ -376,63 +442,90 @@ double Sweep::HoleAngle(const Node& node) const
 
 bool Sweep::Legalize(SweepContext& tcx, Triangle& t)
 {
-  // To legalize a triangle we start by finding if any of the three edges
-  // violate the Delaunay condition
-  for (int i = 0; i < 3; i++) {
-    if (t.delaunay_edge[i])
-      continue;
+  if (&tcx == nullptr) {
+    throw NullPointerException::Create("Sweep::Legalize tcx");
+  }
+  if (&t == nullptr) {
+    throw NullPointerException::Create("Sweep::Legalize t");
+  }
 
-    Triangle* ot = t.GetNeighbor(i);
-
-    if (ot) {
-      Point* p = t.GetPoint(i);
-      Point* op = ot->OppositePoint(t, *p);
-      int oi = ot->Index(op);
-
-      // If this is a Constrained Edge or a Delaunay Edge(only during recursive legalization)
-      // then we should not try to legalize
-      if (ot->constrained_edge[oi] || ot->delaunay_edge[oi]) {
-        t.constrained_edge[i] = ot->constrained_edge[oi];
+  try {
+    // To legalize a triangle we start by finding if any of the three edges
+    // violate the Delaunay condition
+    for (int i = 0; i < 3; i++) {
+      if (t.delaunay_edge[i])
         continue;
-      }
 
-      bool inside = Incircle(*p, *t.PointCCW(*p), *t.PointCW(*p), *op);
+      Triangle* ot = t.GetNeighbor(i);
 
-      if (inside) {
-        // Lets mark this shared edge as Delaunay
-        t.delaunay_edge[i] = true;
-        ot->delaunay_edge[oi] = true;
+      if (ot) {
+        Point* p = t.GetPoint(i);
+        if (p == nullptr) {
+          throw NullPointerException::Create("Sweep::Legalize p");
+        }
+        Point* op = ot->OppositePoint(t, *p);
+        if (op == nullptr) {
+          throw NullPointerException::Create("Sweep::Legalize op");
+        }
+        int oi = ot->Index(op);
 
-        // Lets rotate shared edge one vertex CW to legalize it
-        RotateTrianglePair(t, *p, *ot, *op);
-
-        // We now got one valid Delaunay Edge shared by two triangles
-        // This gives us 4 new edges to check for Delaunay
-
-        // Make sure that triangle to node mapping is done only one time for a specific triangle
-        bool not_legalized = !Legalize(tcx, t);
-        if (not_legalized) {
-          tcx.MapTriangleToNodes(t);
+        // If this is a Constrained Edge or a Delaunay Edge(only during recursive legalization)
+        // then we should not try to legalize
+        if (ot->constrained_edge[oi] || ot->delaunay_edge[oi]) {
+          t.constrained_edge[i] = ot->constrained_edge[oi];
+          continue;
         }
 
-        not_legalized = !Legalize(tcx, *ot);
-        if (not_legalized)
-          tcx.MapTriangleToNodes(*ot);
+        Point* ccw_p = t.PointCCW(*p);
+        if (ccw_p == nullptr) {
+          throw NullPointerException::Create("Sweep::Legalize ccw_p");
+        }
+        Point* cw_p = t.PointCW(*p);
+        if (cw_p == nullptr) {
+          throw NullPointerException::Create("Sweep::Legalize cw_p");
+        }
+        bool inside = Incircle(*p, *ccw_p, *cw_p, *op);
 
-        // Reset the Delaunay edges, since they only are valid Delaunay edges
-        // until we add a new triangle or point.
-        // XXX: need to think about this. Can these edges be tried after we
-        //      return to previous recursive level?
-        t.delaunay_edge[i] = false;
-        ot->delaunay_edge[oi] = false;
+        if (inside) {
+          // Lets mark this shared edge as Delaunay
+          t.delaunay_edge[i] = true;
+          ot->delaunay_edge[oi] = true;
 
-        // If triangle have been legalized no need to check the other edges since
-        // the recursive legalization will handles those so we can end here.
-        return true;
+          // Lets rotate shared edge one vertex CW to legalize it
+          RotateTrianglePair(t, *p, *ot, *op);
+
+          // We now got one valid Delaunay Edge shared by two triangles
+          // This gives us 4 new edges to check for Delaunay
+
+          // Make sure that triangle to node mapping is done only one time for a specific triangle
+          bool not_legalized = !Legalize(tcx, t);
+          if (not_legalized) {
+            tcx.MapTriangleToNodes(t);
+          }
+
+          not_legalized = !Legalize(tcx, *ot);
+          if (not_legalized)
+            tcx.MapTriangleToNodes(*ot);
+
+          // Reset the Delaunay edges, since they only are valid Delaunay edges
+          // until we add a new triangle or point.
+          // XXX: need to think about this. Can these edges be tried after we
+          //      return to previous recursive level?
+          t.delaunay_edge[i] = false;
+          ot->delaunay_edge[oi] = false;
+
+          // If triangle have been legalized no need to check the other edges since
+          // the recursive legalization will handles those so we can end here.
+          return true;
+        }
       }
     }
+    return false;
+  } catch (const Poly2TriException& e) {
+    throw;
+  } catch (const std::exception& e) {
+    throw TriangulationFailedException::Create("Sweep::Legalize failed: " + std::string(e.what()));
   }
-  return false;
 }
 
 bool Sweep::Incircle(const Point& pa, const Point& pb, const Point& pc, const Point& pd) const

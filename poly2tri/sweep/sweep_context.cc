@@ -31,6 +31,7 @@
 #include "sweep_context.h"
 #include <algorithm>
 #include "advancing_front.h"
+#include "exceptions.h"
 
 namespace p2t {
 
@@ -42,18 +43,56 @@ SweepContext::SweepContext(std::vector<Point*> polyline) : points_(std::move(pol
   af_middle_(nullptr),
   af_tail_(nullptr)
 {
+  if (points_.empty()) {
+    throw InvalidInputException::Create("polyline", 0);
+  }
+  for (Point* p : points_) {
+    if (p == nullptr) {
+      throw NullPointerException::Create("polyline point");
+    }
+  }
   InitEdges(points_);
 }
 
 void SweepContext::AddHole(const std::vector<Point*>& polyline)
 {
+  if (polyline.empty()) {
+    throw InvalidInputException::Create("hole", 0);
+  }
+  if (polyline.size() < 3) {
+    throw InvalidInputException::Create("Need at least 3 points to form a hole", polyline.size());
+  }
+  for (const Point* p : polyline) {
+    if (p == nullptr) {
+      throw NullPointerException::Create("hole point");
+    }
+  }
+  if (*polyline.front() != *polyline.back()) {
+    throw InvalidInputException::Create("Hole polyline is not closed");
+  }
+  for (size_t i = 0; i < polyline.size(); ++i) {
+    for (size_t j = i + 1; j < polyline.size(); ++j) {
+      if (*polyline[i] == *polyline[j]) {
+        throw InvalidInputException::Create("Hole contains duplicate points");
+      }
+    }
+  }
   InitEdges(polyline);
   for (auto i : polyline) {
     points_.push_back(i);
   }
+  hole_list_.push_back(polyline);
 }
 
 void SweepContext::AddPoint(Point* point) {
+  if (point == nullptr) {
+    throw NullPointerException::Create("AddPoint point");
+  }
+  for (const Point* p : points_) {
+    if (*p == *point) {
+      throw InvalidInputException::Create("AddPoint point is a duplicate");
+    }
+  }
   points_.push_back(point);
 }
 
@@ -69,11 +108,21 @@ std::list<Triangle*> &SweepContext::GetMap()
 
 void SweepContext::InitTriangulation()
 {
+  size_t num_points = points_.size();
+  if (num_points < 3) {
+    throw InvalidInputException::Create("Need at least 3 points to triangulate", num_points);
+  }
+  if (points_[0] == nullptr) {
+    throw NullPointerException::Create("SweepContext::InitTriangulation first point");
+  }
   double xmax(points_[0]->x), xmin(points_[0]->x);
   double ymax(points_[0]->y), ymin(points_[0]->y);
 
   // Calculate bounds.
   for (auto& point : points_) {
+    if (point == nullptr) {
+      throw NullPointerException::Create("SweepContext::InitTriangulation point");
+    }
     Point& p = *point;
     if (p.x > xmax)
       xmax = p.x;
@@ -98,15 +147,39 @@ void SweepContext::InitTriangulation()
 void SweepContext::InitEdges(const std::vector<Point*>& polyline)
 {
   size_t num_points = polyline.size();
+  if (num_points < 3) {
+    throw InvalidInputException::Create("Need at least 3 points to form a polygon", num_points);
+  }
   for (size_t i = 0; i < num_points; i++) {
     size_t j = i < num_points - 1 ? i + 1 : 0;
-    edge_list.push_back(new Edge(*polyline[i], *polyline[j]));
+    Point* p1 = polyline[i];
+    Point* p2 = polyline[j];
+    if (p1 == nullptr || p2 == nullptr) {
+      throw NullPointerException::Create("SweepContext::InitEdges p1 or p2");
+    }
+    edge_list.push_back(new Edge(*p1, *p2));
   }
 }
 
-Point* SweepContext::GetPoint(size_t index)
+Point* SweepContext::GetPoint(size_t index) {
+  if (index >= points_.size()) {
+    throw InvalidInputException::Create("SweepContext::GetPoint index", index);
+  }
+  Point* point = points_[index];
+  if (point == nullptr) {
+    throw NullPointerException::Create("SweepContext::GetPoint point");
+  }
+  return point;
+}
+
+const std::vector<Point*>& SweepContext::GetPoints() const
 {
-  return points_[index];
+    return points_;
+}
+
+const std::vector<std::vector<Point*>>& SweepContext::GetHoles() const
+{
+    return hole_list_;
 }
 
 void SweepContext::AddToMap(Triangle* triangle)
@@ -116,12 +189,21 @@ void SweepContext::AddToMap(Triangle* triangle)
 
 Node* SweepContext::LocateNode(const Point& point)
 {
+  if (front_ == nullptr) {
+    throw NullPointerException::Create("SweepContext::LocateNode front_");
+  }
   // TODO implement search tree
   return front_->LocateNode(point.x);
 }
 
 void SweepContext::CreateAdvancingFront()
 {
+  if (points_.empty() || points_[0] == nullptr) {
+    throw NullPointerException::Create("SweepContext::CreateAdvancingFront first point");
+  }
+  if (head_ == nullptr || tail_ == nullptr) {
+    throw NullPointerException::Create("SweepContext::CreateAdvancingFront head or tail");
+  }
 
   // Initial triangle
   Triangle* triangle = new Triangle(*points_[0], *head_, *tail_);
