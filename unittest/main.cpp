@@ -261,3 +261,33 @@ BOOST_AUTO_TEST_CASE(TestbedFilesTest)
     }
   }
 }
+
+BOOST_AUTO_TEST_CASE(InvalidInputTest)
+{
+  // Test null pointer input
+  std::vector<p2t::Point*> null_polyline;
+  BOOST_CHECK_THROW(p2t::CDT cdt{ null_polyline }, p2t::InvalidInputException);
+  
+  // Test polygon with less than 3 points
+  std::vector<p2t::Point*> polyline_2{ new p2t::Point(0, 0), new p2t::Point(1, 0) };
+  BOOST_CHECK_THROW(p2t::CDT cdt{ polyline_2 }, p2t::InvalidInputException);
+  for (const auto p : polyline_2) {
+    delete p;
+  }
+  
+  // Test polygon with duplicate points
+  std::vector<p2t::Point*> polyline_dup{ new p2t::Point(0, 0), new p2t::Point(1, 0), new p2t::Point(1, 0) };
+  BOOST_CHECK_THROW(p2t::CDT cdt{ polyline_dup }, p2t::InvalidInputException);
+  for (const auto p : polyline_dup) {
+    delete p;
+  }
+  
+  // Test polygon with self-intersection
+  std::vector<p2t::Point*> polyline_self_intersect{ 
+    new p2t::Point(0, 0), new p2t::Point(2, 0), new p2t::Point(1, 2), new p2t::Point(1, 1) 
+  };
+  BOOST_CHECK_THROW(p2t::CDT cdt{ polyline_self_intersect }, p2t::InvalidInputException);
+  for (const auto p : polyline_self_intersect) {
+    delete p;
+  }
+}
