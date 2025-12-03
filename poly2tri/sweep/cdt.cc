@@ -28,37 +28,68 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include <vector>
+#include <algorithm>
+#include <stdexcept>
 #include "cdt.h"
+#include "../common/utils.h"
 
 namespace p2t {
 
 CDT::CDT(const std::vector<Point*>& polyline)
 {
+  // Validate input polyline
+  if (polyline.size() < 3) {
+    throw std::invalid_argument("Polyline must have at least 3 points");
+  }
+  for (const auto& point : polyline) {
+    if (point == nullptr) {
+      throw std::invalid_argument("Polyline contains null point");
+    }
+  }
   sweep_context_ = new SweepContext(polyline);
   sweep_ = new Sweep;
 }
 
 void CDT::AddHole(const std::vector<Point*>& polyline)
 {
+  // Validate hole polyline
+  if (polyline.size() < 3) {
+    throw std::invalid_argument("Hole polyline must have at least 3 points");
+  }
+  for (const auto& point : polyline) {
+    if (point == nullptr) {
+      throw std::invalid_argument("Hole polyline contains null point");
+    }
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
   sweep_context_->AddHole(polyline);
 }
 
 void CDT::AddPoint(Point* point) {
+  // Validate point
+  if (point == nullptr) {
+    throw std::invalid_argument("Point cannot be null");
+  }
+  std::lock_guard<std::mutex> lock(mutex_);
   sweep_context_->AddPoint(point);
 }
 
 void CDT::Triangulate()
 {
+  std::lock_guard<std::mutex> lock(mutex_);
   sweep_->Triangulate(*sweep_context_);
 }
 
 std::vector<p2t::Triangle*> CDT::GetTriangles()
 {
+  std::lock_guard<std::mutex> lock(mutex_);
   return sweep_context_->GetTriangles();
 }
 
 std::list<p2t::Triangle*> CDT::GetMap()
 {
+  std::lock_guard<std::mutex> lock(mutex_);
   return sweep_context_->GetMap();
 }
 

@@ -31,76 +31,45 @@
 
 #pragma once
 
-#include "advancing_front.h"
-#include "sweep_context.h"
-#include "sweep.h"
-
-#include "../common/dll_symbol.h"
+#include <functional>
+#include <string>
+#include <vector>
 #include <mutex>
-
-/**
- *
- * @author Mason Green <mason.green@gmail.com>
- *
- */
 
 namespace p2t {
 
-class P2T_DLL_SYMBOL CDT
-{
+class ExceptionMonitor {
 public:
-
-  /**
-   * Constructor - add polyline with non repeating points
-   *
-   * @param polyline
-   */
-  CDT(const std::vector<Point*>& polyline);
-
-   /**
-   * Destructor - clean up memory
-   */
-  ~CDT();
-
-  /**
-   * Add a hole
-   *
-   * @param polyline
-   */
-  void AddHole(const std::vector<Point*>& polyline);
-
-  /**
-   * Add a steiner point
-   *
-   * @param point
-   */
-  void AddPoint(Point* point);
-
-  /**
-   * Triangulate - do this AFTER you've added the polyline, holes, and Steiner points
-   */
-  void Triangulate();
-
-  /**
-   * Get CDT triangles
-   */
-  std::vector<Triangle*> GetTriangles();
-
-  /**
-   * Get triangle map
-   */
-  std::list<Triangle*> GetMap();
-
-  private:
-
-  /**
-   * Internals
-   */
-
-  SweepContext* sweep_context_;
-  Sweep* sweep_;
+  // Singleton instance
+  static ExceptionMonitor& Instance() {
+    static ExceptionMonitor instance;
+    return instance;
+  }
+  
+  // Register a callback to be called when an exception occurs
+  using ExceptionCallback = std::function<void(const std::string&, const std::string&)>;
+  void RegisterCallback(ExceptionCallback callback);
+  
+  // Unregister all callbacks
+  void UnregisterAllCallbacks();
+  
+  // Notify all callbacks about an exception
+  void NotifyException(const std::string& type, const std::string& message);
+  
+  // Enable/disable exception monitoring
+  void Enable(bool enabled);
+  bool IsEnabled() const;
+  
+private:
+  ExceptionMonitor() : enabled_(true) {}
+  ~ExceptionMonitor() = default;
+  
+  ExceptionMonitor(const ExceptionMonitor&) = delete;
+  ExceptionMonitor& operator=(const ExceptionMonitor&) = delete;
+  
+  std::vector<ExceptionCallback> callbacks_;
   mutable std::mutex mutex_;
-
+  bool enabled_;
 };
 
-}
+} // namespace p2t
